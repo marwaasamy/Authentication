@@ -1,0 +1,10 @@
+﻿namespace AuthenticationAPI.DTOs
+{
+    public class ResponseDTO
+    {
+        public string Message { get; set; }
+        public bool RequireEmailConfirmation { get; set; } = false;
+
+        public bool IsSuccess { get; set; }
+    }
+}

@@ -41,6 +41,7 @@ namespace AuthenticationAPI
                    options.Password.RequireNonAlphanumeric = true;
                    options.Password.RequiredLength = 8;
                    options.SignIn.RequireConfirmedEmail = true; // Require email confirmation
+                   options.Tokens.EmailConfirmationTokenProvider = TokenOptions.DefaultEmailProvider;
                })
               .AddEntityFrameworkStores<ApplicationDbContext>()
               .AddDefaultTokenProviders();

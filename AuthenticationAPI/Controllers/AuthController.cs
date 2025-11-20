@@ -34,7 +34,7 @@ namespace AuthenticationAPI.Controllers
         public async Task<IActionResult> ConfirmEmail([FromQuery] string? userId, [FromQuery] string? code)
         {
             var result = await _authService.ConfirmEmail(userId, code);
-            if (result != new AuthDTO { Message = "Email confirmed successfully" })
+            if (!result.IsAuthenticated)
             {
                 return BadRequest(result);
             }
@@ -50,6 +50,21 @@ namespace AuthenticationAPI.Controllers
             }
             var result = await _authService.LoginAsync(loginDTO);
             if (!result.IsAuthenticated)
+            {
+                return BadRequest(result.Message);
+            }
+            return Ok(result);
+        }
+
+        [HttpPost("ResendConfirmationEmail")]
+        public async Task<IActionResult> ResendConfirmationEmail([FromBody] EmailConfirmationDTO emailConfirmationDTO)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+            var result = await _authService.ResendConfirmationEmailAsync(emailConfirmationDTO.Email);
+            if (!result.IsSuccess)
             {
                 return BadRequest(result.Message);
             }

@@ -29,11 +29,11 @@ namespace AuthenticationAPI.Services
             _emailSender = emailSender;
         }
 
-        public async Task<AuthDTO> RegisterAsync(RegisterDTO registerDTO, string[] role)
+        public async Task<ResponseDTO> RegisterAsync(RegisterDTO registerDTO, string[] role)
         {
             if (await _userManager.FindByEmailAsync(registerDTO.Email) is not null)
             {
-                return new AuthDTO
+                return new ResponseDTO
                 {
                     Message = "this Email is already registered"
                 };
@@ -41,7 +41,7 @@ namespace AuthenticationAPI.Services
 
             if (await _userManager.FindByNameAsync(registerDTO.Username) is not null)
             {
-                return new AuthDTO
+                return new ResponseDTO
                 {
                     Message = "Username is already registered"
                 };
@@ -58,7 +58,7 @@ namespace AuthenticationAPI.Services
             {
                 var errors = string.Join("; ", result.Errors.Select(e => e.Description));
 
-                return new AuthDTO { Message = errors };
+                return new ResponseDTO { Message = errors };
             }
 
             await _userManager.AddToRolesAsync(user, role);
@@ -71,23 +71,22 @@ namespace AuthenticationAPI.Services
             var returnUrl = requestAccessor.Scheme + "://" + requestAccessor.Host+
             $"/api/Auth/ConfirmEmail?userId={user.Id}&code={encodedCode}";
 
-            var emailBody = $"<h2>Welcome to our Application</h2>" +
+            var emailBody = $" <h2>Email Confirmation</h2>"+
+                $"<p> Hello { System.Net.WebUtility.HtmlEncode(user.FullName)},</p>" +
                 $"<p>Please confirm your email by clicking the link below:</p>" +
-                $"<a href='{returnUrl}'>Confirm Email</a>";
+                $"<a href='{returnUrl}'>Confirm Email</a>"+
+                $"<p>This link will expire in 24 hours.</p>";
 
             await _emailSender.SendEmailAsync(user.Email, "Confirm your email", emailBody);
 
             //var token = await CreateJWTToken(user);
-            return new AuthDTO
+            return new ResponseDTO
             {
                 //IsAuthenticated = true,
                 //Token = new JwtSecurityTokenHandler().WriteToken(token),
                 //ExpiresOn = token.ValidTo,
                 Message = "User Registered successfully. Please check your email to confirm your account.",
-                UserName = user.UserName,
-                Email = user.Email,
-                FullName = user.FullName,
-                RequireEmailConfirmation = true
+                RequireEmailConfirmation = true,
             };
         }
 
@@ -98,13 +97,19 @@ namespace AuthenticationAPI.Services
                 return new AuthDTO { Message = "Invalid user ID or code" };
             }
 
-            var decodedCode = Uri.UnescapeDataString(code);
-
             var user = await _userManager.FindByIdAsync(userId);
             if (user == null)
             {
                 return new AuthDTO { Message = "User not found" };
             }
+
+            if (await _userManager.IsEmailConfirmedAsync(user))
+            {
+                return new AuthDTO { Message = "Email is already confirmed. You can log in." };
+            }
+
+            var decodedCode = Uri.UnescapeDataString(code);
+
             var result = await _userManager.ConfirmEmailAsync(user, decodedCode);
 
             
@@ -117,6 +122,7 @@ namespace AuthenticationAPI.Services
                     IsAuthenticated = true,
                     Token = new JwtSecurityTokenHandler().WriteToken(token),
                     Message = "Email confirmed successfully. You can now log in.",
+                    ExpiresOn = token.ValidTo,
                     UserName = user.UserName ?? string.Empty,
                     Email = user.Email ?? string.Empty,
                     FullName = user.FullName
@@ -128,6 +134,45 @@ namespace AuthenticationAPI.Services
                 return new AuthDTO { Message = errors };
             }
         }
+
+
+        public async Task<ResponseDTO> ResendConfirmationEmailAsync(string email)
+        {
+            var user = await _userManager.FindByEmailAsync(email);
+            if (user == null)
+            {
+                return new ResponseDTO { Message = "User not found" , IsSuccess = false};
+            }
+
+            if (await _userManager.IsEmailConfirmedAsync(user))
+            {
+                return new ResponseDTO { Message = "Email is already confirmed. You can log in." , IsSuccess = false };
+            }
+
+            var code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+            var encodedCode = Uri.EscapeDataString(code);
+
+            var requestAccessor = _httpContextAccessor.HttpContext.Request;
+            var confirmationLink = requestAccessor.Scheme + "://" + requestAccessor.Host +
+                $"/api/Auth/ConfirmEmail?userId={user.Id}&code={encodedCode}";
+
+            var emailBody = $@"
+                          <h2>Email Confirmation</h2>
+                          <p>Hello {System.Net.WebUtility.HtmlEncode(user.FullName)},</p>
+                          <p>You requested a new confirmation email. Please confirm your email by clicking the link below:</p>
+                          <p><a href='{confirmationLink}'>Confirm Email</a></p>
+                          <p>This link will expire in 24 hours.</p>
+                          <p>If you did not request this, please ignore this email.</p>";
+             
+            await _emailSender.SendEmailAsync(user.Email, "Confirm your email", emailBody);
+
+            return new ResponseDTO
+            { 
+                Message = "Confirmation email resent. Please check your email to confirm your account."
+                , IsSuccess = true
+            };
+        }
+
 
         public async Task<AuthDTO> LoginAsync(LoginDTO loginDTO)
         {
@@ -203,6 +248,6 @@ namespace AuthenticationAPI.Services
             return token;
         }
 
-      
+     
     }
 }

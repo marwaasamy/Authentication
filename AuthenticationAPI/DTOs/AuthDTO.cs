@@ -15,7 +15,7 @@ namespace AuthenticationAPI.DTOs
         public string Email { get; set; }
         public string Token { get; set; }
         public DateTime ExpiresOn { get; set; }
-        public bool RequireEmailConfirmation { get; set; } = false;
+
 
     }
 }
