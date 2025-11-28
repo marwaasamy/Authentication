@@ -4,6 +4,7 @@ using AuthenticationAPI.Models;
 using AuthenticationAPI.Services.Interfaces;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -19,14 +20,16 @@ namespace AuthenticationAPI.Services
         private readonly JWT _jwt;
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly IEmailSender _emailSender;
+        private readonly IMemoryCache _memoryCache;
 
-        public AuthService(UserManager<ApplicationUser> userManager, RoleManager<IdentityRole> roleManager, IOptions<JWT> jwt, IHttpContextAccessor httpContextAccessor, IEmailSender emailSender)
+        public AuthService(UserManager<ApplicationUser> userManager, RoleManager<IdentityRole> roleManager, IOptions<JWT> jwt, IHttpContextAccessor httpContextAccessor, IEmailSender emailSender, IMemoryCache memoryCache)
         {
             _userManager = userManager;
             _RoleManager = roleManager;
             _jwt = jwt.Value;
             _httpContextAccessor = httpContextAccessor;
             _emailSender = emailSender;
+            _memoryCache = memoryCache;
         }
 
         public async Task<ResponseDTO> RegisterAsync(RegisterDTO registerDTO, string[] role)
@@ -86,7 +89,7 @@ namespace AuthenticationAPI.Services
                 //Token = new JwtSecurityTokenHandler().WriteToken(token),
                 //ExpiresOn = token.ValidTo,
                 Message = "User Registered successfully. Please check your email to confirm your account.",
-                RequireEmailConfirmation = true,
+                IsSuccess = true
             };
         }
 
@@ -169,7 +172,7 @@ namespace AuthenticationAPI.Services
             return new ResponseDTO
             { 
                 Message = "Confirmation email resent. Please check your email to confirm your account."
-                , IsSuccess = true
+                , IsSuccess = true,
             };
         }
 
@@ -248,6 +251,122 @@ namespace AuthenticationAPI.Services
             return token;
         }
 
-     
+        public async Task<ResponseDTO> ForgotPasswordAsync(string email)
+        {
+            var user = await _userManager.FindByEmailAsync(email);
+            if (user == null)
+            {
+                return new ResponseDTO 
+                { 
+                    Message = "User not found",
+                    IsSuccess = false 
+                };
+            }
+
+            var otp = new Random().Next(100000, 999999).ToString();
+            
+            _memoryCache.Set($"OTP_{user.Email}", otp, TimeSpan.FromMinutes(15));
+
+            var emailBody = $@"
+                          <h2>Password Reset Request</h2>
+                          <p>Hello {System.Net.WebUtility.HtmlEncode(user.FullName)},</p>
+                          <p>You requested to reset your password. Use the OTP below to proceed:</p>
+                          <h3 style='color: #007bff;'>{otp}</h3>
+                          <p>This OTP will expire in 15 minutes.</p>
+                          <p>If you did not request this, please ignore this email.</p>";
+
+            await _emailSender.SendEmailAsync(user.Email, "Password Reset OTP", emailBody);
+
+            return new ResponseDTO
+            {
+                Message = "OTP sent to your email. Please check your inbox.",
+                IsSuccess = true
+            };
+        }
+
+        public async Task<ResponseDTO> VerifyOtpAsync(VerifyOtpDTO verifyOtpDTO)
+        {
+            var user = await _userManager.FindByEmailAsync(verifyOtpDTO.Email);
+            if (user == null)
+            {
+                return new ResponseDTO
+                {
+                    IsSuccess = false,
+                    Message = "User Not Found"
+                };
+            }
+
+            if (!_memoryCache.TryGetValue($"OTP_{user.Email}", out string CachedOtp))
+            {
+                return new ResponseDTO
+                {
+                    IsSuccess = false,
+                    Message = "OTP expired or not found. Please request a new OTP."
+                };
+            }
+
+            if (CachedOtp != verifyOtpDTO.Otp)
+            {
+                return new ResponseDTO
+                {
+                    IsSuccess = false ,
+                    Message = "Invalid OTP"
+                };
+            }
+
+            _memoryCache.Set($"Verified_{user.Email}", true, TimeSpan.FromMinutes(10));
+            _memoryCache.Remove($"OTP_{user.Email}");
+            
+
+            return new ResponseDTO
+            {
+                IsSuccess = true,
+                Message = "OTP verified. You may now reset your password"
+            };
+        }
+
+        public async Task<ResponseDTO> ResetPasswordAsync(ResetPasswordDTO resetPasswordDTO)
+        {
+            var user = await _userManager.FindByEmailAsync(resetPasswordDTO.Email);
+            if (user == null)
+            {
+                return new ResponseDTO
+                {
+                    IsSuccess = false,
+                    Message = "User Not Found"
+                };
+            }
+
+            if (!_memoryCache.TryGetValue($"Verified_{user.Email}", out bool isVerified) || !isVerified)
+            {
+                return new ResponseDTO
+                {
+                    Message = "Please verify your OTP first",
+                    IsSuccess = false
+                };
+            }
+
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var result = await _userManager.ResetPasswordAsync(user, token, resetPasswordDTO.NewPassword);
+
+            if (!result.Succeeded)
+            {
+                var errors = string.Join("; ", result.Errors.Select(e => e.Description));
+                return new ResponseDTO
+                {
+                    IsSuccess = false,
+                    Message = errors
+                };
+            }
+
+            _memoryCache.Remove($"Verified_{user.Email}");
+
+            return new ResponseDTO
+            {
+                Message = "Password has been reset successfully",
+                IsSuccess = true
+            };
+
+        }
     }
 }

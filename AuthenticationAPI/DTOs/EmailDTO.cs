@@ -2,7 +2,7 @@
 
 namespace AuthenticationAPI.DTOs
 {
-    public class EmailConfirmationDTO
+    public class EmailDTO
     {
         [Required]
         [EmailAddress]

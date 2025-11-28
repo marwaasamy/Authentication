@@ -23,7 +23,7 @@ namespace AuthenticationAPI.Controllers
                 return BadRequest(ModelState);
             }
             var result = await _authService.RegisterAsync(registerDTO, new[] { "User" });
-            if (!result.RequireEmailConfirmation)
+            if (!result.IsSuccess)
             {
                 return BadRequest(result.Message);
             }
@@ -57,7 +57,7 @@ namespace AuthenticationAPI.Controllers
         }
 
         [HttpPost("ResendConfirmationEmail")]
-        public async Task<IActionResult> ResendConfirmationEmail([FromBody] EmailConfirmationDTO emailConfirmationDTO)
+        public async Task<IActionResult> ResendConfirmationEmail([FromBody] EmailDTO emailConfirmationDTO)
         {
             if (!ModelState.IsValid)
             {
@@ -70,5 +70,51 @@ namespace AuthenticationAPI.Controllers
             }
             return Ok(result);
         }
+
+        [HttpPost("ForgotPassword")]
+        public async Task<IActionResult> ForgotPassword([FromBody] EmailDTO emailDTO)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+            var result = await _authService.ForgotPasswordAsync(emailDTO.Email);
+            if (!result.IsSuccess)
+            {
+                return BadRequest(result.Message);
+            }
+            return Ok(result);
+        }
+
+        [HttpPost("VerifyCode")]
+        public async Task<IActionResult> VerifyCode([FromBody] VerifyOtpDTO verifyOtpDTO)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+            var result = await _authService.VerifyOtpAsync(verifyOtpDTO);
+            if (!result.IsSuccess)
+            {
+                return BadRequest(result.Message);
+            }
+            return Ok(result);
+        }
+
+        [HttpPost("ResetPassword")]
+        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordDTO resetPasswordDTO)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+            var result = await _authService.ResetPasswordAsync(resetPasswordDTO);
+            if (!result.IsSuccess)
+            {
+                return BadRequest(result.Message);
+            }
+            return Ok(result);
+        }
+
     }
 }

@@ -21,6 +21,8 @@ namespace AuthenticationAPI
             // Add services to the container.
 
             builder.Services.AddControllers();
+
+            builder.Services.AddMemoryCache();
             builder.Services.AddDbContext<ApplicationDbContext>(options =>
             {
                 options.UseSqlServer(builder.Configuration.GetConnectionString("cs"));
